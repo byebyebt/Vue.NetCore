@@ -45,7 +45,31 @@
                 v-if="item.type=='select'||item.type=='selectList'||item.type=='drop'||item.type=='dropList'"
               >
                 <div>
+                  <!-- {{ item.remote||item.url?"1":"0"}} -->
+                  <!-- 远程搜索 -->
+                  <!-- 从后台字典搜索remote  -->
+                  <!-- url：从指定url搜索返回格式必须是[{key:1,value:'xxx'}] 格式-->
                   <Select
+                    v-if="item.remote||item.url"
+                    :transfer="true"
+                    v-model="formFileds[item.field]"
+                    filterable
+                    remote
+                    :remote-method="(val)=>{remoteSearch(item,val,formFileds)}"
+                    @on-query-change="(val)=>{queryChange(item,formFileds,val)}"
+                    :loading="item.loading"
+                    :placeholder="item.placeholder?item.placeholder:( '请选择'+item.title)"
+                    @on-change="onChange(item,formFileds[item.field])"
+                    clearable
+                  >
+                    <Option
+                      v-for="(kv,kvIndex) in getData(item)"
+                      :key="kvIndex"
+                      :value="kv.key||''"
+                    >{{kv.value}}</Option>
+                  </Select>
+                  <Select
+                    v-else
                     :transfer="true"
                     v-model="formFileds[item.field]"
                     :multiple="(item.type=='select'||item.type=='drop')?false:true"
@@ -54,7 +78,6 @@
                     @on-change="onChange(item,formFileds[item.field])"
                     clearable
                   >
-                    <!-- :max-tag-count="2" -->
                     <Option
                       v-for="(kv,kvIndex) in getData(item)"
                       :key="kvIndex"
@@ -390,6 +413,50 @@ export default {
         this.bindOptions(dic, binds);
       });
     },
+    //远程搜索清空数据后还原原始数据
+    queryChange(item, formFileds, val) {
+      //没有数据时还原原始数据
+      if (val === "" || val === undefined) {
+        if (item.hasOwnProperty("originalData")) {
+          if (item.data && item.data.data) {
+            item.data.data = item.originalData;
+          } else {
+            item.data = item.originalData;
+          }
+        }
+        formFileds[item.field] = "";
+      }
+    },
+    //远程搜索
+    remoteSearch(item, val, formFileds) {
+      if (val == "") return;
+
+      let data = this.getData(item);
+      //备份原始数据
+      if (!item.hasOwnProperty("originalData")) {
+        item.originalData = [];
+        item.originalData.push(...data);
+      }
+      //清空数据源，这个数据源可能有多个地方共享
+
+      //  console.log(val);
+      let url = item.remote
+        ? "/api/Sys_Dictionary/GetSearchDictionary"
+        : item.url;
+      item.loading = true;
+      // formFileds[item.field] = val;
+      this.http
+        .post(url + "?dicNo=" + item.dataKey + "&value=" + val)
+        .then(dicData => {
+          item.loading = false;
+          if (!dicData) return;
+          if (item.data && item.data.data) {
+            item.data.data = dicData;
+          } else {
+            item.data = dicData;
+          }
+        });
+    },
     bindOptions(dic, binds) {
       dic.forEach(d => {
         binds.forEach(x => {
@@ -505,6 +572,10 @@ export default {
       this.formRules.forEach(row => {
         if (row.length > this.span) this.span = row.length;
         row.forEach(item => {
+          //目前只支持select单选远程搜索，remote远程从后台字典数据源进行搜索，url从指定的url搜索
+          if (item.type == "select" && (item.remote || item.url)) {
+            item.loading = false;
+          }
           //初始化上传文件信息
           this.initUpload(item, init);
           //初始化数据源空对象
@@ -713,7 +784,11 @@ export default {
       }
 
       //if (item.type == "checkbox" || item.type == "select") {
-      if (item.type == "select" ||item.type == "selectList" || item.type == "drop") {
+      if (
+        item.type == "select" ||
+        item.type == "selectList" ||
+        item.type == "drop"
+      ) {
         let _rule = {
           required: true,
           message: "请选择" + item.title,
